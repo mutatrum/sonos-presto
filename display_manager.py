@@ -35,7 +35,6 @@ def scale_blit_viper(src_obj, dst_obj, w_src: int, h_src: int, w_dst: int, h_dst
 class DisplayManager:
     def __init__(self):
         # Presto handles display initialization internally
-        # Enable full resolution (480x480) and direct buffer access for Viper
         self.presto = Presto(full_res=True, direct_to_fb=True)
         
         # Start with backlight off to avoid noise
@@ -149,7 +148,6 @@ class DisplayManager:
             self.presto.update()
             return
 
-        # Check for progressive JPEG (unsupported by hardware decoder)
         if self.is_progressive_jpeg(jpg_data):
             print("Skipping update: Progressive JPEG detected (unsupported). Keeping previous image.")
             return
@@ -157,103 +155,30 @@ class DisplayManager:
         print(f"Displaying JPG, size: {len(jpg_data)} bytes")
 
         try:
-             # Try RAM decoding again now that we are using presto.update()
-             self.jpeg.open_RAM(jpg_data)
-             w = self.jpeg.get_width()
-             h = self.jpeg.get_height()
-             
-             print(f"Screen: {self.width}x{self.height}, Image: {w}x{h}")
-             
-             print(f"Screen: {self.width}x{self.height}, Image: {w}x{h}")
-             
-             # Check if we can use fast hardware scaling (perfect multiples of screen size)
-             # Supports 1x (match), 2x (1/2), 4x (1/4), 8x (1/8)
-             is_hardware_compatible = (w == self.width) or (w == self.width * 2) or (w == self.width * 4) or (w == self.width * 8)
-             
-             # Use software scaling if it's not a perfect hardware match and image is larger than screen
-             # This ensures we fit 500x500, 640x640 etc exactly without cropping or black bars
-             if not is_hardware_compatible and w > self.width:
-                 print(f"Attempting software scaling ({w}x{h} -> {self.width}x{self.height}) with Viper...")
-                 start_t = time.ticks_ms()
-                 
-                 gc.collect() # Free up memory before allocating large buffer
-                 try:
-                     # Allocate buffer for the full source image
-                     buf = bytearray(w * h * 2)
-                     src_gfx = PicoGraphics(width=w, height=h, pen_type=PEN_RGB565, buffer=buf)
-                     
-                     # Create a new jpegdec instance attached to the source graphics buffer
-                     j_src = jpegdec.JPEG(src_gfx)
-                     j_src.open_RAM(jpg_data)
-                     j_src.decode(0, 0) # Decode the full image into the buffer
-                     
-                     # Use Viper-optimized blit (direct buffer access)
-                     # self.presto.buffer is exposed because we used direct_to_fb=True
-                     scale_blit_viper(buf, self.presto.buffer, w, h, self.width, self.height)
-                         
-                     self.presto.update() # Final update
-                     
-                     end_t = time.ticks_ms()
-                     print(f"Software scaling complete. Time: {time.ticks_diff(end_t, start_t)}ms")
-                     return # Software scaling was successful, exit
-                     
-                 except MemoryError as e:
-                     print(f"MemoryError during soft scaling: {e}. Falling back to hardware scaling.")
-                     gc.collect() # Try to free memory
-                 except Exception as e:
-                     print(f"Soft scaling failed: {e}. Falling back to hardware scaling.")
-                     gc.collect() # Try to free memory
-             
-             # If software scaling was not attempted or failed, proceed with hardware scaling
-             scale = jpegdec.JPEG_SCALE_FULL
-             div = 1
-             
-             # Calculate "Crop to Fill" scale
-             # We want the image to be larger than or equal to the screen to fill it (crop edges)
-             # rather than smaller (black bars).
-             # jpegdec only supports 1, 2, 4, 8 scaling.
-             
-             if w >= self.width * 8 and h >= self.height * 8:
-                 try:
-                    scale = jpegdec.JPEG_SCALE_EIGHTH
-                    div = 8
-                 except AttributeError:
-                    scale = jpegdec.JPEG_SCALE_QUARTER
-                    div = 4
-             elif w >= self.width * 4 and h >= self.height * 4:
-                 scale = jpegdec.JPEG_SCALE_QUARTER
-                 div = 4
-             elif w >= self.width * 2 and h >= self.height * 2:
-                 scale = jpegdec.JPEG_SCALE_HALF
-                 div = 2
-             
-             # Heuristic refinement: If crop cuts off > 15%, prefer fitting inside
-             # (This helps with 640x640 on 480x480 where 1.33x crop loses text)
-             reduced_w = w // div
-             if reduced_w > self.width * 1.15:
-                 print(f"Refining scale to avoid heavy crop (Width: {reduced_w} > {self.width*1.15})")
-                 if scale == jpegdec.JPEG_SCALE_FULL:
-                     scale = jpegdec.JPEG_SCALE_HALF
-                     div = 2
-                 elif scale == jpegdec.JPEG_SCALE_HALF:
-                     scale = jpegdec.JPEG_SCALE_QUARTER
-                     div = 4
-                 elif scale == jpegdec.JPEG_SCALE_QUARTER:
-                     try:
-                        scale = jpegdec.JPEG_SCALE_EIGHTH
-                        div = 8
-                     except AttributeError:
-                        pass
+            self.jpeg.open_RAM(jpg_data)
+            w = self.jpeg.get_width()
+            h = self.jpeg.get_height()
+            
+            print(f"Screen: {self.width}x{self.height}, Image: {w}x{h}")
+            
+            gc.collect()
 
-             print(f"Scaling by 1/{div}")
-             reduced_w = w // div
-             reduced_h = h // div
-                 
-             x = (self.width - reduced_w) // 2
-             y = (self.height - reduced_h) // 2
-             
-             self.jpeg.decode(x, y, scale)
-             
+            # Allocate buffer for the full source image
+            buf = bytearray(w * h * 2)
+            src_gfx = PicoGraphics(width=w, height=h, pen_type=PEN_RGB565, buffer=buf)
+            
+            # Create a new jpegdec instance attached to the source graphics buffer
+            j_src = jpegdec.JPEG(src_gfx)
+            j_src.open_RAM(jpg_data)
+            j_src.decode(0, 0) # Decode the full image into the buffer
+            
+            # self.presto.buffer is exposed because we used direct_to_fb=True
+            scale_blit_viper(buf, self.presto.buffer, w, h, self.width, self.height)
+                
+            self.presto.update() # Final update
+            
+            return
+            
         except Exception as e:
             print(f"Error displaying image: {e}")
             self.show_text("Art Error")

@@ -14,7 +14,7 @@ def main():
     display.show_text(f"Joining {config.SSID}...")
     try:
         ip = network_manager.connect_wifi()
-        display.show_text("WiFi OK!")
+        display.show_text("WiFi connected!")
         time.sleep(1)
     except Exception as e:
         display.show_text("WiFi Fail")
@@ -31,10 +31,9 @@ def main():
         for device in devices:
             name = device.get_room_name()
             print(f"Check: {device.ip} -> {name}")
-            display.show_text(f"Found: {name}")
+            display.show_text(f"Room: {name}")
             if name == config.ROOM_NAME:
                 target_sonos = device
-                display.show_text(f"Found: {name}")
                 break
         
         if target_sonos is None:
@@ -88,14 +87,6 @@ def main():
                 
                 # Handle gestures
                 if action == Action.PLAY_PAUSE:
-                    # Toggle logic requires knowing state. 
-                    # For now just toggle or send Play if unknown.
-                    # We can use the last known transport state
-                    # Simple heuristic: If recently Playing, Pause. Else Play.
-                    # Ideally we check state, but that's slow.
-                    # Let's blindly toggle or assume desired state.
-                    # Better: check 'transport_state' var from outer scope if valid?
-                    # Using a safe check:
                     try:
                         state = target_sonos.get_transport_info()
                         if state == "PLAYING":
