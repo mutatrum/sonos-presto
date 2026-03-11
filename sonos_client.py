@@ -78,6 +78,7 @@ def http_request(method, url, data=None, headers=None):
             s = ssl.wrap_socket(s, server_hostname=host)
     except Exception as e:
         s.close()
+        print(f"HTTP Connect Error ({host}:{port}): {e}")
         raise e
     
     s.write(b"%s /%s HTTP/1.1\r\n" % (method.encode(), path.encode()))
@@ -184,21 +185,34 @@ class SonosDevice:
         self.ip = ip
         self.port = port
         self.room_name = None
+        self.udn = None
 
-    def get_room_name(self):
-        """Fetches device description to find the room name."""
+    def get_device_info(self):
+        """Fetches device description to find room name and UDN (Rincon ID)."""
         url = f"http://{self.ip}:{self.port}/xml/device_description.xml"
         try:
             response = http_request("GET", url)
             if response.status_code == 200:
                 xml = response.text
-                # Simple regex to find room name (in <roomName> tag)
-                match = re.search(r"<roomName>(.*?)</roomName>", xml)
-                if match:
-                    self.room_name = match.group(1)
+                # Simple regex for room name
+                room_match = re.search(r"<roomName>(.*?)</roomName>", xml)
+                if room_match:
+                    self.room_name = room_match.group(1)
+                
+                # Simple regex for UDN (uuid:RINCON_...)
+                udn_match = re.search(r"<UDN>(uuid:.*?)</UDN>", xml)
+                if udn_match:
+                    self.udn = udn_match.group(1)
+                    
             response.close()
         except Exception as e:
-            print(f"Error getting room name for {self.ip}: {e}")
+            print(f"Error getting device info for {self.ip}: {e}")
+        return self.room_name, self.udn
+
+    def get_room_name(self):
+        """Legacy helper, now uses get_device_info."""
+        if self.room_name is None:
+            self.get_device_info()
         return self.room_name
 
     def get_position_info(self):
@@ -424,14 +438,21 @@ def discover_devices(timeout=2):
     s.settimeout(timeout)
     
     try:
-        s.sendto(msg.encode(), (SSDP_ADDR, SSDP_PORT))
+        # Send multiple discovery packets for reliability
+        for _ in range(3):
+            s.sendto(msg.encode(), (SSDP_ADDR, SSDP_PORT))
+            time.sleep(0.1)
+            
         start = time.time()
         while time.time() - start < timeout:
             try:
                 data, addr = s.recvfrom(1024)
+                # print(f"SSDP Response from {addr[0]}") # Debug
                 devices.add(addr[0])
             except OSError:
                 break # Timeout
+    except Exception as e:
+        print(f"Discovery Error: {e}")
     finally:
         s.close()
         

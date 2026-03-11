@@ -8,21 +8,24 @@ def connect_wifi():
     wlan.active(True)
     
     if not wlan.isconnected():
-        print(f"Connecting to network '{config.SSID}'...")
+        print(f"Connecting to '{config.SSID}'...")
         wlan.connect(config.SSID, config.PASSWORD)
         
         # Wait for connection
-        max_wait = 10
+        max_wait = 30 # Increased from 10
         while max_wait > 0:
-            if wlan.status() < 0 or wlan.status() >= 3:
+            status = wlan.status()
+            if status < 0 or status >= 3:
                 break
             max_wait -= 1
-            print("Waiting for connection...")
+            print(f"Waiting... ({max_wait}s)")
             time.sleep(1)
             
-    if wlan.status() != 3:
-        raise RuntimeError("Network connection failed")
+    status = wlan.status()
+    if status != 3:
+        raise RuntimeError(f"WiFi failed (status={status})")
     else:
-        status = wlan.ifconfig()
-        print(f"Connected! IP: {status[0]}")
-        return status[0]
+        config_info = wlan.ifconfig()
+        rssi = wlan.status('rssi')
+        print(f"Connected! IP: {config_info[0]}, RSSI: {rssi}dBm")
+        return config_info[0], rssi
