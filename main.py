@@ -194,32 +194,52 @@ def main():
                             current_sonos = target_sonos
                             
                             info = target_sonos.get_position_info()
-                            if info and 'album_art_uri' in info:
-                                current_uri = info['album_art_uri']
+                            
+                            # Check if it's a group Rincon URI
+                            if info and 'track_uri' in info and "x-rincon:" in info['track_uri']:
+                                current_uri = info['track_uri']
+                                rincon_id = "uuid:" + current_uri.split(":")[1]
+                                if rincon_id in udn_map:
+                                    print(f"Following Group Coordinator: {udn_map[rincon_id].ip}")
+                                    current_sonos = udn_map[rincon_id]
+                                    info = current_sonos.get_position_info()
+                            
+                            if info:
+                                image_uri = info.get('album_art_uri')
                                 
-                                # Check if it's a group Rincon URI
-                                if "x-rincon:" in current_uri:
-                                    rincon_id = "uuid:" + current_uri.split(":")[1]
-                                    if rincon_id in udn_map:
-                                        print(f"Following Group Coordinator: {udn_map[rincon_id].ip}")
-                                        current_sonos = udn_map[rincon_id]
-                                        info = current_sonos.get_position_info()
-                                        if info and 'album_art_uri' in info:
-                                            current_uri = info['album_art_uri']
-                                
-                                if current_uri != last_art_uri and "x-rincon:" not in current_uri:
-                                    print(f"New Art Detected: {current_uri}")
-                                    jpeg_data = current_sonos.get_album_art_jpeg(current_uri)
-                                    if jpeg_data:
-                                        display.show_album_art(jpeg_data)
-                                        last_art_uri = current_uri
-                                    else:
-                                        display.show_text("Art Fetch Fail")
-                            else:
-                                if info == {}:
-                                    print("No Metadata (Likely grouping issue or not playing)")
+                                if image_uri and "x-rincon:" not in image_uri:
+                                    if image_uri != last_art_uri:
+                                        print(f"New Art Detected: {image_uri}")
+                                        jpeg_data = current_sonos.get_album_art_jpeg(image_uri)
+                                        if jpeg_data:
+                                            display.show_album_art(jpeg_data)
+                                            last_art_uri = image_uri
+                                        else:
+                                            display.show_text("Art Fetch Fail")
                                 else:
-                                    print(f"No Art Info (info={info})")
+                                    # Fallback to Text MetaData when no Album Art is present
+                                    stream_text = info.get('stream_content')
+                                    title_text = info.get('title')
+                                    artist_text = info.get('artist')
+                                    
+                                    display_text = ""
+                                    if stream_text:
+                                        display_text = stream_text
+                                    elif title_text:
+                                        display_text = title_text
+                                        if artist_text:
+                                            display_text += f"\n{artist_text}"
+                                    else:
+                                        display_text = "Radio Playing"
+                                    
+                                    text_state_id = "txt:" + display_text
+                                    
+                                    if last_art_uri != text_state_id:
+                                        print(f"Displaying Text Fallback: {display_text}")
+                                        display.show_text(display_text, scale=2)
+                                        last_art_uri = text_state_id
+                            else:
+                                print("No Metadata Info")
                     except Exception as e:
                         print(f"\nSonos Update Error: {e}")
                         sonos_fail_count += 1

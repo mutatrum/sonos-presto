@@ -248,21 +248,47 @@ class SonosDevice:
     def _parse_position_info(self, xml):
         """Extracts TrackURI and TrackMetaData from response."""
         info = {}
-        # Parse TrackMetaData (DIDL-Lite inside XML)
-        # Note: XML in XML, standard UPnP mess
-        meta_match = re.search(r"&lt;upnp:albumArtURI&gt;(.*?)&lt;/upnp:albumArtURI&gt;", xml)
         
-        # Sometimes it might be directly in the response if not escaped, but usually it is escaped
-        # Let's try basic regex for the escaped content
-        if meta_match:
-            uri = meta_match.group(1)
-            # Unescape generic XML entities
-            # We do it multiple times or specific replace because of the "XML within XML" (double escaping)
-            # &amp;amp; -> &amp; -> &
+        track_uri_match = re.search(r"<TrackURI>(.*?)</TrackURI>", xml)
+        if track_uri_match:
+            info['track_uri'] = track_uri_match.group(1).replace("&amp;", "&")
+            
+        art_match = re.search(r"&lt;upnp:albumArtURI.*?&gt;(.*?)&lt;/upnp:albumArtURI&gt;", xml)
+        if not art_match:
+            art_match = re.search(r"<upnp:albumArtURI.*?>(.*?)</upnp:albumArtURI>", xml)
+            
+        if art_match:
+            uri = art_match.group(1)
             for _ in range(2):
                 uri = uri.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", '"').replace("&apos;", "'").replace("&amp;", "&")
-            
             info['album_art_uri'] = uri
+            
+        title_match = re.search(r"&lt;dc:title.*?&gt;(.*?)&lt;/dc:title&gt;", xml)
+        if not title_match:
+            title_match = re.search(r"<dc:title.*?>(.*?)</dc:title>", xml)
+        if title_match:
+            title = title_match.group(1)
+            for _ in range(2):
+                title = title.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", '"').replace("&apos;", "'").replace("&amp;", "&")
+            info['title'] = title
+
+        artist_match = re.search(r"&lt;dc:creator.*?&gt;(.*?)&lt;/dc:creator&gt;", xml)
+        if not artist_match:
+            artist_match = re.search(r"<dc:creator.*?>(.*?)</dc:creator>", xml)
+        if artist_match:
+            artist = artist_match.group(1)
+            for _ in range(2):
+                artist = artist.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", '"').replace("&apos;", "'").replace("&amp;", "&")
+            info['artist'] = artist
+
+        stream_match = re.search(r"&lt;r:streamContent.*?&gt;(.*?)&lt;/r:streamContent&gt;", xml)
+        if not stream_match:
+            stream_match = re.search(r"<r:streamContent.*?>(.*?)</r:streamContent>", xml)
+        if stream_match:
+            stream = stream_match.group(1)
+            for _ in range(2):
+                stream = stream.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", '"').replace("&apos;", "'").replace("&amp;", "&")
+            info['stream_content'] = stream
             
         return info
 
